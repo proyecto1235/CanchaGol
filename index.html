@@ -1,0 +1,1698 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CanchaGol - Sistema Deportivo Huancayo 2026</title>
+
+  <!-- Tailwind CSS & FontAwesome CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- FIREBASE (SDK v9 Compat - Base de Datos Serverless en Tiempo Real) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              100: '#dcfce7',
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d',
+              dark: '#0f172a'
+            }
+          },
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root {
+      --primary: #10b981;
+      --bg-dark: #0b0f19;
+      --bg-card: #151d2a;
+      --bg-input: #0f172a;
+      --text-main: #f8fafc;
+      --border-color: #1e293b;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    .glass-panel { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+    .glass-input { background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255, 255, 255, 0.12); color: white; }
+    .glass-input:focus { border-color: #22c55e; outline: none; box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2); }
+    .glass-input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .view-section { display: none; }
+    .view-section.active { display: block; }
+
+    .stat-tab { display: none; }
+    .stat-tab.active { display: block; }
+
+    .chat-window {
+      position: fixed;
+      bottom: 100px;
+      right: 25px;
+      width: 380px;
+      height: 500px;
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.7);
+      display: none;
+      flex-direction: column;
+      z-index: 1000;
+    }
+    .chat-window.active { display: flex; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .animate-popup { animation: fadeIn 0.2s ease-out forwards; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between">
+
+  <!-- NAVBAR DINÁMICO -->
+  <header class="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-50 backdrop-blur-md px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3 cursor-pointer" onclick="switchView('view-home')">
+      <div class="w-10 h-10 bg-gradient-to-tr from-emerald-600 to-green-400 rounded-xl flex items-center justify-center shadow-lg shadow-green-900/30">
+        <i class="fa-solid fa-futbol text-2xl text-slate-950" aria-hidden="true"></i>
+      </div>
+      <div>
+        <h1 class="text-xl font-extrabold text-white tracking-tight">Cancha<span class="text-emerald-400">Gol</span></h1>
+        <p class="text-[10px] text-slate-400">Huancayo 2026</p>
+      </div>
+    </div>
+
+    <nav class="hidden md:flex bg-slate-950/80 px-4 py-2 rounded-full border border-slate-800 space-x-6 text-sm font-semibold text-slate-300" aria-label="Navegación principal">
+      <button onclick="switchView('view-home')" class="hover:text-emerald-400 transition-colors"><i class="fa-solid fa-house mr-1" aria-hidden="true"></i> Inicio / Canchas</button>
+
+      <button id="nav-owner-link" onclick="protectedSwitchView('view-owner-dashboard', 'owner')" class="hidden hover:text-emerald-400 transition-colors text-amber-400">
+        <i class="fa-solid fa-chart-line mr-1" aria-hidden="true"></i> Mi Panel Dueño
+      </button>
+
+      <button id="nav-admin-link" onclick="protectedSwitchView('view-admin-dashboard', 'admin')" class="hidden hover:text-emerald-400 transition-colors text-purple-400">
+        <i class="fa-solid fa-user-shield mr-1" aria-hidden="true"></i> Panel Admin
+      </button>
+
+      <button onclick="toggleChat()" class="hover:text-emerald-400 transition-colors"><i class="fa-solid fa-robot mr-1" aria-hidden="true"></i> Asistente IA</button>
+    </nav>
+
+    <div id="auth-buttons-container" class="flex items-center gap-3">
+      <button onclick="openCheckoutModal()" class="px-4 py-2 text-xs font-bold rounded-lg bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-md transition-all flex items-center gap-2">
+        <i class="fa-solid fa-calendar-plus" aria-hidden="true"></i> Reservar Cancha
+      </button>
+
+      <div id="guest-controls" class="flex gap-2">
+        <button onclick="openAuthModal('login')" class="px-4 py-2 text-xs font-semibold rounded-lg border border-slate-700 text-white hover:border-emerald-500 transition-all">Iniciar Sesión</button>
+        <button onclick="openAuthModal('register')" class="px-4 py-2 text-xs font-bold rounded-lg border border-emerald-500 text-emerald-400 hover:bg-emerald-500/10 transition-all">Registrarse</button>
+      </div>
+
+      <div id="user-controls" class="hidden items-center gap-3">
+        <span id="user-badge" class="text-xs px-2.5 py-1 rounded-full font-bold bg-slate-800 border border-slate-700 text-emerald-400">
+          <i class="fa-solid fa-user text-[10px] mr-1" aria-hidden="true"></i> <span id="user-name">Usuario</span>
+        </span>
+        <button onclick="logout()" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-red-950 border border-red-800 text-red-400 hover:bg-red-900 transition-all" aria-label="Cerrar sesión">
+          <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- VISTA 1: EXPLORADOR PÚBLICO DE CANCHAS -->
+  <main id="view-home" class="view-section active flex-1">
+    <section class="py-12 px-6 text-center bg-gradient-to-b from-emerald-950/20 via-slate-950 to-slate-950">
+      <div class="w-20 h-20 bg-slate-900 border-2 border-emerald-500 rounded-full mx-auto flex items-center justify-center shadow-lg shadow-emerald-500/20 mb-4">
+        <i class="fa-solid fa-futbol text-4xl text-emerald-400" aria-hidden="true"></i>
+      </div>
+      <h1 class="text-3xl md:text-4xl font-extrabold text-white mb-2">Reserva Tu Espacio Deportivo en Huancayo</h1>
+      <p class="text-slate-400 max-w-2xl mx-auto text-sm mb-8">Encuentra y asegura tu cancha de Futsal, Vóley, Básquet o Pádel en El Tambo, Huancayo Centro, Chilca y San Jerónimo.</p>
+
+      <!-- BARRA PRINCIPAL DE BÚSQUEDA Y FILTRADO -->
+      <div class="max-w-4xl mx-auto glass-panel p-4 rounded-2xl grid grid-cols-1 md:grid-cols-4 gap-4 items-end text-left">
+        <div>
+          <label for="filter-distrito" class="text-xs font-bold text-emerald-400 uppercase block mb-1"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> Distrito</label>
+          <select id="filter-distrito" onchange="applyFilters()" class="glass-input w-full p-2.5 rounded-xl text-xs">
+            <option value="">Todos los distritos</option>
+            <option value="El Tambo">El Tambo</option>
+            <option value="Huancayo Centro">Huancayo Centro</option>
+            <option value="Chilca">Chilca</option>
+            <option value="San Jerónimo">San Jerónimo</option>
+          </select>
+        </div>
+        <div>
+          <label for="filter-deporte" class="text-xs font-bold text-emerald-400 uppercase block mb-1"><i class="fa-solid fa-trophy" aria-hidden="true"></i> Deporte</label>
+          <select id="filter-deporte" onchange="applyFilters()" class="glass-input w-full p-2.5 rounded-xl text-xs">
+            <option value="">Todos los deportes</option>
+            <option value="Futsal">Futsal / Grass Sintético</option>
+            <option value="Vóley">Vóley Profesional</option>
+            <option value="Básquetbol">Básquetbol</option>
+            <option value="Pádel">Pádel & Tenis</option>
+          </select>
+        </div>
+        <div>
+          <label for="filter-fecha" class="text-xs font-bold text-emerald-400 uppercase block mb-1"><i class="fa-regular fa-calendar-days" aria-hidden="true"></i> Fecha</label>
+          <input type="date" id="filter-fecha" value="2026-10-11" class="glass-input w-full p-2.5 rounded-xl text-xs">
+        </div>
+        <div class="flex gap-2">
+          <button onclick="applyFilters()" class="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 text-xs shadow-md">
+            <i class="fa-solid fa-filter" aria-hidden="true"></i> Filtrar
+          </button>
+          <button onclick="resetFilters()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold p-2.5 rounded-xl transition-all flex items-center justify-center text-xs" title="Limpiar filtros" aria-label="Limpiar filtros">
+            <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- LISTADO DINÁMICO DE CANCHAS -->
+    <section class="max-w-7xl mx-auto px-6 py-8">
+      <div class="flex justify-between items-center mb-6 border-l-4 border-emerald-500 pl-3">
+        <h2 class="text-xl font-bold text-white">Espacios Deportivos Disponibles</h2>
+        <span id="courts-count" class="text-xs text-slate-400">Cargando base de datos...</span>
+      </div>
+      <div id="canchas-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"></div>
+    </section>
+
+    <!-- GALERÍA DE DEPORTES -->
+    <section class="max-w-7xl mx-auto px-6 py-8 border-t border-slate-800/80 my-6">
+      <div class="mb-6 border-l-4 border-emerald-500 pl-3">
+        <h2 class="text-xl font-bold text-white">Disciplinas Deportivas Disponibles</h2>
+        <p class="text-xs text-slate-400">Haz clic en los botones de cada tarjeta para filtrar el catálogo o reservar directamente tu turno.</p>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <article class="glass-panel rounded-xl overflow-hidden flex flex-col justify-between group hover:border-emerald-500/60 transition-all">
+          <div class="relative w-full h-44 overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1575361204480-aadea25e6e68?auto=format&fit=crop&w=600&q=80" alt="Cancha de futsal de césped sintético iluminada de noche" loading="lazy" class="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent"></div>
+          </div>
+          <div class="p-4 flex-1 flex flex-col justify-between">
+            <div>
+              <h3 class="text-base font-bold text-white mb-1"><i class="fa-solid fa-futbol text-emerald-400 mr-2" aria-hidden="true"></i>Futsal & Grass Sintético</h3>
+              <p class="text-xs text-slate-400 mb-4">Canchas sintéticas con iluminación LED para partidos diurnos y nocturnos.</p>
+            </div>
+            <div class="flex gap-2 pt-2 border-t border-slate-800">
+              <button onclick="filterBySport('Futsal')" class="flex-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold py-2 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-filter text-[10px]" aria-hidden="true"></i> Filtrar
+              </button>
+              <button onclick="openCheckoutModal()" class="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[11px] font-extrabold py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-md">
+                <i class="fa-solid fa-calendar-plus text-[10px]" aria-hidden="true"></i> Reservar
+              </button>
+            </div>
+          </div>
+        </article>
+
+        <article class="glass-panel rounded-xl overflow-hidden flex flex-col justify-between group hover:border-emerald-500/60 transition-all">
+          <div class="relative w-full h-44 overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?auto=format&fit=crop&w=600&q=80" alt="Balón de vóleibol sobre la red en cancha profesional iluminada" loading="lazy" class="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent"></div>
+          </div>
+          <div class="p-4 flex-1 flex flex-col justify-between">
+            <div>
+              <h3 class="text-base font-bold text-white mb-1"><i class="fa-solid fa-volleyball text-emerald-400 mr-2" aria-hidden="true"></i>Vóley Profesional</h3>
+              <p class="text-xs text-slate-400 mb-4">Instalaciones adaptadas para competencia y práctica recreativa.</p>
+            </div>
+            <div class="flex gap-2 pt-2 border-t border-slate-800">
+              <button onclick="filterBySport('Vóley')" class="flex-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold py-2 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-filter text-[10px]" aria-hidden="true"></i> Filtrar
+              </button>
+              <button onclick="openCheckoutModal()" class="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[11px] font-extrabold py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-md">
+                <i class="fa-solid fa-calendar-plus text-[10px]" aria-hidden="true"></i> Reservar
+              </button>
+            </div>
+          </div>
+        </article>
+
+        <article class="glass-panel rounded-xl overflow-hidden flex flex-col justify-between group hover:border-emerald-500/60 transition-all">
+          <div class="relative w-full h-44 overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=600&q=80" alt="Cancha de baloncesto exterior con tablero y aro" loading="lazy" class="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent"></div>
+          </div>
+          <div class="p-4 flex-1 flex flex-col justify-between">
+            <div>
+              <h3 class="text-base font-bold text-white mb-1"><i class="fa-solid fa-basketball text-emerald-400 mr-2" aria-hidden="true"></i>Básquetbol</h3>
+              <p class="text-xs text-slate-400 mb-4">Pisos amortiguados y aros reglamentarios en Huancayo.</p>
+            </div>
+            <div class="flex gap-2 pt-2 border-t border-slate-800">
+              <button onclick="filterBySport('Básquetbol')" class="flex-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold py-2 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-filter text-[10px]" aria-hidden="true"></i> Filtrar
+              </button>
+              <button onclick="openCheckoutModal()" class="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[11px] font-extrabold py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-md">
+                <i class="fa-solid fa-calendar-plus text-[10px]" aria-hidden="true"></i> Reservar
+              </button>
+            </div>
+          </div>
+        </article>
+
+        <article class="glass-panel rounded-xl overflow-hidden flex flex-col justify-between group hover:border-emerald-500/60 transition-all">
+          <div class="relative w-full h-44 overflow-hidden">
+            <img src="https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=600&q=80" alt="Pala de pádel sobre la pista acristalada de juego" loading="lazy" class="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent"></div>
+          </div>
+          <div class="p-4 flex-1 flex flex-col justify-between">
+            <div>
+              <h3 class="text-base font-bold text-white mb-1"><i class="fa-solid fa-table-tennis-paddle-ball text-emerald-400 mr-2" aria-hidden="true"></i>Pádel & Tenis</h3>
+              <p class="text-xs text-slate-400 mb-4">Pistas sintéticas con cerramiento panorámico de cristal.</p>
+            </div>
+            <div class="flex gap-2 pt-2 border-t border-slate-800">
+              <button onclick="filterBySport('Pádel')" class="flex-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold py-2 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-filter text-[10px]" aria-hidden="true"></i> Filtrar
+              </button>
+              <button onclick="openCheckoutModal()" class="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-[11px] font-extrabold py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-md">
+                <i class="fa-solid fa-calendar-plus text-[10px]" aria-hidden="true"></i> Reservar
+              </button>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <!-- VISTA 2: PANEL PRIVADO DEL DUEÑO -->
+  <main id="view-owner-dashboard" class="view-section max-w-7xl mx-auto px-6 py-8 w-full flex-1">
+    <div class="flex justify-between items-center mb-6 border-b border-slate-800 pb-4">
+      <div>
+        <h2 class="text-2xl font-extrabold text-white flex items-center gap-2"><i class="fa-solid fa-chart-line text-amber-400" aria-hidden="true"></i> Panel Estadístico del Propietario</h2>
+        <p class="text-xs text-slate-400">Gestión de tus complejos deportivos e ingresos en tiempo real</p>
+      </div>
+      <span class="text-xs font-bold bg-amber-950 border border-amber-800 text-amber-400 px-3 py-1.5 rounded-lg">
+        <i class="fa-solid fa-lock mr-1" aria-hidden="true"></i> Área Privada Dueño
+      </span>
+    </div>
+
+    <div class="flex flex-wrap gap-2 mb-8 bg-slate-900 p-1.5 rounded-xl border border-slate-800">
+      <button onclick="switchStatTab('tab-ventas')" id="btn-tab-ventas" class="flex-1 py-2.5 px-4 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 transition-all flex items-center justify-center gap-2">
+        <i class="fa-solid fa-sack-dollar" aria-hidden="true"></i> Según Ventas
+      </button>
+      <button onclick="switchStatTab('tab-reservas')" id="btn-tab-reservas" class="flex-1 py-2.5 px-4 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all flex items-center justify-center gap-2">
+        <i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Según Reservas
+      </button>
+      <button onclick="switchStatTab('tab-canchas')" id="btn-tab-canchas" class="flex-1 py-2.5 px-4 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all flex items-center justify-center gap-2">
+        <i class="fa-solid fa-futbol" aria-hidden="true"></i> Según Canchas
+      </button>
+      <button onclick="switchStatTab('tab-clientes')" id="btn-tab-clientes" class="flex-1 py-2.5 px-4 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all flex items-center justify-center gap-2">
+        <i class="fa-solid fa-users" aria-hidden="true"></i> Según Clientes
+      </button>
+    </div>
+
+    <div id="tab-ventas" class="stat-tab active space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div class="glass-panel p-5 rounded-2xl border-l-4 border-emerald-500">
+          <p class="text-xs font-bold text-slate-400 uppercase">Ingresos Totales (Mes)</p>
+          <span class="text-3xl font-extrabold text-white mt-1 block">S/ <span id="stat-ingresos-total">0.00</span></span>
+        </div>
+        <div class="glass-panel p-5 rounded-2xl border-l-4 border-amber-500">
+          <p class="text-xs font-bold text-slate-400 uppercase">Ticket Promedio por Reserva</p>
+          <span class="text-3xl font-extrabold text-white mt-1 block">S/ <span id="stat-ticket-promedio">0.00</span></span>
+        </div>
+        <div class="glass-panel p-5 rounded-2xl border-l-4 border-blue-500">
+          <p class="text-xs font-bold text-slate-400 uppercase">Método Preferido</p>
+          <span class="text-2xl font-extrabold text-white mt-1 block">Yape / Plin</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-reservas" class="stat-tab space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div class="glass-panel p-5 rounded-2xl border-l-4 border-emerald-500">
+          <p class="text-xs font-bold text-slate-400 uppercase">Reservas Registradas</p>
+          <span id="stat-total-reservas" class="text-3xl font-extrabold text-white mt-1 block">0</span>
+        </div>
+      </div>
+
+      <div class="glass-panel p-6 rounded-2xl">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-sm font-bold text-white flex items-center gap-2"><i class="fa-solid fa-table-cells text-emerald-400" aria-hidden="true"></i> Matriz de Ocupación por Horas</h3>
+          <input type="date" id="filtro-fecha-grilla" value="2026-10-11" class="glass-input text-xs rounded-xl px-3 py-2 font-medium" onchange="renderGrillaHorarios()" aria-label="Seleccionar fecha para filtrar grilla">
+        </div>
+        <div id="grilla-container" class="overflow-x-auto"></div>
+      </div>
+    </div>
+
+    <div id="tab-canchas" class="stat-tab space-y-6">
+      <div class="glass-panel p-6 rounded-2xl">
+        <h3 class="text-sm font-bold text-white mb-6"><i class="fa-solid fa-trophy text-amber-400 mr-2" aria-hidden="true"></i> Rendimiento por Cancha</h3>
+        <div id="canchas-stats-list" class="space-y-5"></div>
+      </div>
+    </div>
+
+    <div id="tab-clientes" class="stat-tab space-y-6">
+      <div class="glass-panel p-6 rounded-2xl">
+        <h3 class="text-sm font-bold text-white mb-4"><i class="fa-solid fa-crown text-amber-400 mr-2" aria-hidden="true"></i> Clientes Frecuentes</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-900 uppercase text-[10px] text-slate-400 border-b border-slate-800">
+              <tr>
+                <th class="py-3 px-4">Cliente</th>
+                <th class="py-3 px-4">Teléfono</th>
+                <th class="py-3 px-4">Reservas</th>
+                <th class="py-3 px-4">Inversión Total</th>
+              </tr>
+            </thead>
+            <tbody id="tabla-clientes-vip" class="divide-y divide-slate-800"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <section class="glass-panel p-6 rounded-2xl mt-8">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-list-check text-emerald-400" aria-hidden="true"></i>
+          Historial de Reservas Sincronizado (<span id="reservas-count-label">200</span> registros)
+        </h3>
+        <div class="flex flex-wrap gap-2">
+          <input type="text" id="reservas-search" oninput="renderTablaReservas()" placeholder="Buscar cliente, cancha, fecha..." class="glass-input px-3 py-2 rounded-xl text-xs w-52">
+          <select id="reservas-status-filter" onchange="renderTablaReservas()" class="glass-input px-3 py-2 rounded-xl text-xs">
+            <option value="">Todos los estados</option>
+            <option value="PAGADO">PAGADO</option>
+            <option value="PENDIENTE">PENDIENTE</option>
+          </select>
+          <select id="reservas-limit-filter" onchange="renderTablaReservas()" class="glass-input px-3 py-2 rounded-xl text-xs">
+            <option value="25">Mostrar 25</option>
+            <option value="50">Mostrar 50</option>
+            <option value="100">Mostrar 100</option>
+            <option value="250" selected>Mostrar todos (200+)</option>
+          </select>
+          <button type="button" onclick="exportToExcel('reservas')" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all">
+            <i class="fa-solid fa-file-excel" aria-hidden="true"></i> Exportar Excel
+          </button>
+        </div>
+      </div>
+      <div class="overflow-x-auto max-h-[520px] overflow-y-auto">
+        <table class="w-full text-left text-xs text-slate-300">
+          <thead class="bg-slate-900 uppercase text-[10px] text-slate-400 border-b border-slate-800 sticky top-0">
+            <tr>
+              <th class="py-3 px-4">#</th>
+              <th class="py-3 px-4">Cliente</th>
+              <th class="py-3 px-4">Teléfono</th>
+              <th class="py-3 px-4">Cancha</th>
+              <th class="py-3 px-4">Fecha & Hora</th>
+              <th class="py-3 px-4">Monto Total</th>
+              <th class="py-3 px-4">Estado</th>
+            </tr>
+          </thead>
+          <tbody id="tabla-reservas-body" class="divide-y divide-slate-800"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- VISTA 3: PANEL ADMINISTRADOR -->
+  <main id="view-admin-dashboard" class="view-section max-w-7xl mx-auto px-6 py-8 w-full flex-1 space-y-8">
+    <div class="flex flex-wrap justify-between items-center gap-4 border-b border-slate-800 pb-4">
+      <div>
+        <h2 class="text-2xl font-extrabold text-white flex items-center gap-2"><i class="fa-solid fa-user-shield text-purple-400" aria-hidden="true"></i> Panel de Control Global CanchaGol</h2>
+        <p class="text-xs text-slate-400">Supervisión general de 4 dueños, 200 usuarios y 200 reservas registradas en Huancayo</p>
+      </div>
+      <div class="flex flex-wrap items-center gap-3 text-xs font-bold">
+        <span class="bg-amber-950/70 border border-amber-700 text-amber-300 px-3 py-1.5 rounded-lg">
+          Dueños: <span id="admin-count-owners">0</span>
+        </span>
+        <span class="bg-emerald-950/70 border border-emerald-700 text-emerald-300 px-3 py-1.5 rounded-lg">
+          Usuarios: <span id="admin-count-users">0</span>
+        </span>
+        <span class="bg-purple-950/70 border border-purple-700 text-purple-300 px-3 py-1.5 rounded-lg">
+          Reservas: <span id="admin-count-reservas">0</span>
+        </span>
+        <button type="button" onclick="exportToExcel('duenos')" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-md transition-all">
+          <i class="fa-solid fa-file-excel" aria-hidden="true"></i> Excel Dueños
+        </button>
+      </div>
+    </div>
+
+    <section class="glass-panel p-6 rounded-2xl">
+      <h3 class="text-sm font-bold text-white mb-4 flex items-center gap-2"><i class="fa-solid fa-store text-amber-400" aria-hidden="true"></i> Registro General Completo de Propietarios</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs text-slate-300">
+          <thead class="bg-slate-900 uppercase text-[10px] text-slate-400 border-b border-slate-800">
+            <tr>
+              <th class="py-3 px-4">Representante</th>
+              <th class="py-3 px-4">Complejo Deportivo</th>
+              <th class="py-3 px-4">RUC / DNI</th>
+              <th class="py-3 px-4">Ubicación / Distrito</th>
+              <th class="py-3 px-4">Teléfono</th>
+              <th class="py-3 px-4">Infraestructura</th>
+              <th class="py-3 px-4">Horario</th>
+            </tr>
+          </thead>
+          <tbody id="tabla-duenos-admin" class="divide-y divide-slate-800"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="glass-panel p-6 rounded-2xl">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+          <i class="fa-solid fa-users text-emerald-400" aria-hidden="true"></i> Directorio de Usuarios Registrados (200 Registros)
+        </h3>
+        <div class="flex flex-wrap gap-2">
+          <input type="text" id="admin-user-search" oninput="renderTablaUsuariosAdmin()" placeholder="Buscar por nombre, DNI, correo o distrito..." class="glass-input px-3 py-2 rounded-xl text-xs w-60">
+          <select id="admin-user-limit" onchange="renderTablaUsuariosAdmin()" class="glass-input px-3 py-2 rounded-xl text-xs">
+            <option value="25">Mostrar 25</option>
+            <option value="50">Mostrar 50</option>
+            <option value="100">Mostrar 100</option>
+            <option value="200" selected>Mostrar los 200</option>
+          </select>
+          <button type="button" onclick="exportToExcel('usuarios')" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all">
+            <i class="fa-solid fa-file-excel" aria-hidden="true"></i> Exportar Excel
+          </button>
+        </div>
+      </div>
+      <div class="overflow-x-auto max-h-[520px] overflow-y-auto">
+        <table class="w-full text-left text-xs text-slate-300">
+          <thead class="bg-slate-900 uppercase text-[10px] text-slate-400 border-b border-slate-800 sticky top-0">
+            <tr>
+              <th class="py-3 px-4">#</th>
+              <th class="py-3 px-4">Usuario</th>
+              <th class="py-3 px-4">Documento</th>
+              <th class="py-3 px-4">Correo</th>
+              <th class="py-3 px-4">Teléfono</th>
+              <th class="py-3 px-4">Distrito</th>
+              <th class="py-3 px-4">Rol</th>
+              <th class="py-3 px-4">Reservas / Gasto</th>
+            </tr>
+          </thead>
+          <tbody id="tabla-usuarios-admin" class="divide-y divide-slate-800"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- VISTA 4: LOGIN Y REGISTRO -->
+  <main id="view-auth" class="view-section flex-1 max-w-2xl mx-auto my-12 p-6 glass-panel rounded-2xl w-full">
+    <h2 class="text-2xl font-extrabold text-center text-white mb-2">Acceso y Registro al Sistema</h2>
+    <p class="text-xs text-slate-400 text-center mb-6">Selecciona el tipo de cuenta y completa los campos</p>
+
+    <div class="flex border-b border-slate-800 mb-6">
+      <button id="auth-mode-login" onclick="toggleAuthMode('login')" class="flex-1 py-2 text-xs font-bold border-b-2 border-emerald-500 text-emerald-400 transition-all">Iniciar Sesión</button>
+      <button id="auth-mode-register" onclick="toggleAuthMode('register')" class="flex-1 py-2 text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-white transition-all">Crear Cuenta</button>
+    </div>
+
+    <div class="flex gap-1 bg-slate-950 p-1 rounded-xl mb-6 border border-slate-800">
+      <button id="role-client-btn" onclick="selectRole('client')" class="flex-1 py-2 text-xs font-bold rounded-lg bg-emerald-500 text-slate-950 transition-all">Deportista</button>
+      <button id="role-owner-btn" onclick="selectRole('owner')" class="flex-1 py-2 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all">Dueño / Propietario</button>
+      <button id="role-admin-btn" onclick="selectRole('admin')" class="flex-1 py-2 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all">Admin System</button>
+    </div>
+
+    <form id="auth-form" onsubmit="handleAuthSubmit(event)" class="space-y-4 text-xs">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <label for="auth-email" class="block text-slate-400 mb-1 font-semibold">Correo Electrónico *</label>
+          <input type="email" id="auth-email" required placeholder="ejemplo@canchagol.pe" class="glass-input w-full p-2.5 rounded-xl">
+        </div>
+        <div>
+          <label for="auth-password" class="block text-slate-400 mb-1 font-semibold">Contraseña *</label>
+          <input type="password" id="auth-password" required placeholder="••••••••" class="glass-input w-full p-2.5 rounded-xl">
+        </div>
+      </div>
+
+      <!-- CAMPOS EXTENDIDOS DE REGISTRO -->
+      <div id="register-fields" class="space-y-4 hidden border-t border-slate-800/80 pt-4 mt-2">
+        <h4 class="text-emerald-400 font-bold text-xs uppercase flex items-center gap-1.5 border-b border-slate-800 pb-2">
+          <i class="fa-solid fa-id-card" aria-hidden="true"></i> Información Personal
+        </h4>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label for="reg-firstname" class="block text-slate-400 mb-1 font-semibold">Nombres *</label>
+            <input type="text" id="reg-firstname" placeholder="Ej. Juan Carlos" class="glass-input w-full p-2.5 rounded-xl">
+          </div>
+          <div>
+            <label for="reg-lastname1" class="block text-slate-400 mb-1 font-semibold">Apellido Paterno</label>
+            <input type="text" id="reg-lastname1" placeholder="Ej. Pérez" class="glass-input w-full p-2.5 rounded-xl">
+          </div>
+          <div>
+            <label for="reg-lastname2" class="block text-slate-400 mb-1 font-semibold">Apellido Materno</label>
+            <input type="text" id="reg-lastname2" placeholder="Ej. Huamán" class="glass-input w-full p-2.5 rounded-xl">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label for="reg-doc-type" class="block text-slate-400 mb-1 font-semibold">Documento</label>
+            <select id="reg-doc-type" class="glass-input w-full p-2.5 rounded-xl">
+              <option value="DNI">DNI</option>
+              <option value="CE">Carné de Extranjería</option>
+            </select>
+          </div>
+          <div>
+            <label for="reg-dni" class="block text-slate-400 mb-1 font-semibold">N° Documento</label>
+            <input type="text" id="reg-dni" maxlength="12" placeholder="87654321" class="glass-input w-full p-2.5 rounded-xl">
+          </div>
+          <div>
+            <label for="reg-phone" class="block text-slate-400 mb-1 font-semibold">Teléfono / Celular</label>
+            <input type="tel" id="reg-phone" maxlength="9" placeholder="987654321" class="glass-input w-full p-2.5 rounded-xl">
+          </div>
+        </div>
+
+        <!-- CAMPOS ESPECÍFICOS PARA REGISTRO DE DUEÑOS -->
+        <div id="owner-register-fields" class="space-y-4 hidden bg-slate-900/80 p-4 rounded-xl border border-amber-500/30">
+          <h4 class="text-amber-400 font-bold text-xs uppercase flex items-center gap-1.5 border-b border-slate-800 pb-2">
+            <i class="fa-solid fa-building-flag" aria-hidden="true"></i> Datos Comercial del Complejo
+          </h4>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label for="reg-ruc" class="block text-slate-400 mb-1 font-semibold">RUC Comercial</label>
+              <input type="text" id="reg-ruc" maxlength="11" placeholder="20123456789" class="glass-input w-full p-2.5 rounded-xl">
+            </div>
+            <div>
+              <label for="reg-local-name" class="block text-slate-400 mb-1 font-semibold">Nombre del Complejo *</label>
+              <input type="text" id="reg-local-name" placeholder="Ej. Complejo Deportivo El Golazo" class="glass-input w-full p-2.5 rounded-xl">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label for="reg-distrito" class="block text-slate-400 mb-1 font-semibold">Distrito en Huancayo</label>
+              <select id="reg-distrito" class="glass-input w-full p-2.5 rounded-xl">
+                <option value="El Tambo">El Tambo</option>
+                <option value="Huancayo Centro">Huancayo Centro</option>
+                <option value="Chilca">Chilca</option>
+                <option value="San Jerónimo">San Jerónimo</option>
+              </select>
+            </div>
+            <div>
+              <label for="reg-address" class="block text-slate-400 mb-1 font-semibold">Dirección Exacta</label>
+              <input type="text" id="reg-address" placeholder="Ej. Av. Huancavelica 1240" class="glass-input w-full p-2.5 rounded-xl">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label for="reg-sport-type" class="block text-slate-400 mb-1 font-semibold">Deporte Principal</label>
+              <select id="reg-sport-type" class="glass-input w-full p-2.5 rounded-xl">
+                <option value="Futsal">Futsal / Grass Sintético</option>
+                <option value="Vóley">Vóley</option>
+                <option value="Básquetbol">Básquetbol</option>
+                <option value="Pádel">Pádel & Tenis</option>
+              </select>
+            </div>
+            <div>
+              <label for="reg-surface" class="block text-slate-400 mb-1 font-semibold">Tipo de Superficie</label>
+              <select id="reg-surface" class="glass-input w-full p-2.5 rounded-xl">
+                <option value="Grass Sintético FIFA">Grass Sintético FIFA</option>
+                <option value="Piso Parquet / Techado">Piso Parquet / Techado</option>
+                <option value="Cancha de Cristal Pádel">Cancha de Cristal Pádel</option>
+              </select>
+            </div>
+            <div>
+              <label for="reg-price" class="block text-slate-400 mb-1 font-semibold">Precio por Hora (S/)</label>
+              <input type="number" id="reg-price" placeholder="60.00" class="glass-input w-full p-2.5 rounded-xl">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button type="submit" id="auth-submit-btn" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold p-3 rounded-xl transition-all text-xs flex items-center justify-center gap-2">
+        <i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i> <span>Iniciar Sesión</span>
+      </button>
+    </form>
+  </main>
+
+  <!-- MODAL DE RESERVA -->
+  <div id="modal-checkout" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] hidden items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="glass-panel w-full max-w-xl rounded-2xl overflow-hidden shadow-2xl border border-slate-700 animate-popup">
+      <div class="bg-slate-900 px-6 py-4 border-b border-slate-800 flex justify-between items-center">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-calendar-check text-emerald-400 text-lg" aria-hidden="true"></i>
+          <h3 id="modal-title" class="text-base font-bold text-white">Completar Reserva de Cancha</h3>
+        </div>
+        <button onclick="closeCheckoutModal()" class="text-slate-400 hover:text-white" aria-label="Cerrar modal de reserva"><i class="fa-solid fa-xmark text-lg" aria-hidden="true"></i></button>
+      </div>
+
+      <form id="bookingForm" onsubmit="confirmReservation(event)" class="p-6 space-y-4 text-xs">
+        <div>
+          <label for="ownerSelect" class="block text-slate-300 font-semibold mb-1">1. Dueño / Complejo Deportivo</label>
+          <select id="ownerSelect" required class="glass-input w-full p-2.5 rounded-xl text-xs">
+            <option value="">-- Selecciona un Dueño o Complejo --</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="courtSelect" class="block text-slate-300 font-semibold mb-1">2. Cancha</label>
+          <select id="courtSelect" disabled required class="glass-input w-full p-2.5 rounded-xl text-xs">
+            <option value="">-- Primero selecciona un dueño --</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label for="checkout-name" class="block text-slate-300 font-semibold mb-1">Nombre Completo</label>
+            <input type="text" id="checkout-name" required placeholder="Ej. Juan Pérez" class="glass-input w-full p-2.5 rounded-xl">
+          </div>
+          <div>
+            <label for="checkout-phone" class="block text-slate-300 font-semibold mb-1">Teléfono / WhatsApp</label>
+            <input type="tel" id="checkout-phone" required placeholder="964XXXXXX" class="glass-input w-full p-2.5 rounded-xl">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label for="checkout-date" class="block text-slate-300 font-semibold mb-1">Fecha</label>
+            <input type="date" id="checkout-date" value="2026-10-11" required class="glass-input w-full p-2.5 rounded-xl">
+          </div>
+          <div>
+            <label for="checkout-hour" class="block text-slate-300 font-semibold mb-1">Hora</label>
+            <select id="checkout-hour" required class="glass-input w-full p-2.5 rounded-xl">
+              <option value="16:00">16:00 - 17:00 hs</option>
+              <option value="17:00">17:00 - 18:00 hs</option>
+              <option value="18:00">18:00 - 19:00 hs</option>
+              <option value="19:00">19:00 - 20:00 hs</option>
+              <option value="20:00">20:00 - 21:00 hs</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="submit" id="submitBtn" disabled class="w-full bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 font-extrabold p-3 rounded-xl transition-all shadow-lg text-xs flex items-center justify-center gap-2">
+          <i class="fa-solid fa-circle-check" aria-hidden="true"></i> Confirmar Reserva
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- CHATBOT IA FLOTANTE -->
+  <button onclick="toggleChat()" class="fixed bottom-6 right-6 w-14 h-14 bg-slate-950 border-2 border-emerald-500 rounded-full text-emerald-400 flex items-center justify-center text-2xl shadow-xl z-50 hover:scale-110 transition-transform" aria-label="Abrir chat con el Asistente de Inteligencia Artificial">
+    <i class="fa-solid fa-robot" aria-hidden="true"></i>
+  </button>
+
+  <div id="chatWindow" class="chat-window" role="region" aria-label="Ventana de chat de soporte con IA">
+    <div class="bg-slate-900 p-4 border-b border-slate-800 flex justify-between items-center rounded-t-2xl">
+      <span class="text-xs font-bold text-white flex items-center gap-2"><i class="fa-solid fa-brain text-emerald-400" aria-hidden="true"></i> IA CanchaGol Huancayo</span>
+      <button onclick="toggleChat()" class="text-slate-400 hover:text-white" aria-label="Cerrar ventana de chat"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </div>
+
+    <div id="chatBody" class="flex-1 p-4 overflow-y-auto text-xs space-y-3">
+      <div class="bg-slate-900 border border-slate-800 p-3 rounded-xl text-slate-300">
+        ¡Hola! Soy la IA de **CanchaGol Huancayo 2026**. Tenemos 4 complejos, 200 usuarios y 200 reservas activas en el sistema.
+      </div>
+    </div>
+
+    <form onsubmit="sendChatMessage(event)" class="p-3 border-t border-slate-800 flex gap-2">
+      <input type="text" id="chatInput" placeholder="Pregúntame algo..." class="glass-input flex-1 p-2.5 rounded-xl text-xs" aria-label="Escribe tu consulta para la IA">
+      <button type="submit" class="bg-emerald-500 text-slate-950 px-3.5 rounded-xl font-bold hover:bg-emerald-400 transition-colors" aria-label="Enviar mensaje"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i></button>
+    </form>
+  </div>
+
+  <footer class="border-t border-slate-900 bg-slate-950 py-6 text-center text-xs text-slate-500">
+    <p>© 2026 CanchaGol Huancayo — 4 Dueños, 200 Usuarios, 200 Reservas y Exportación a Excel.</p>
+  </footer>
+
+  <script>
+    // =========================================================
+    // FIREBASE REALTIME DATABASE
+    // =========================================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyDemoKey_CanchaGol2026Huancayo",
+      authDomain: "canchagol-huancayo.firebaseapp.com",
+      databaseURL: "https://canchagol-huancayo-default-rtdb.firebaseio.com",
+      projectId: "canchagol-huancayo",
+      storageBucket: "canchagol-huancayo.appspot.com",
+      messagingSenderId: "123456789",
+      appId: "1:123456789:web:abcdef123456"
+    };
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
+
+    let selectedRole = 'client';
+    let authMode = 'login';
+    let currentUser = null;
+
+    // =========================================================
+    // 4 DUEÑOS / COMPLEJOS DEPORTIVOS EN HUANCAYO
+    // =========================================================
+    const initialDueños = [
+      {
+        ownerId: "owner_01",
+        representante: "Carlos Gómez",
+        ownerName: "El Golazo VIP - Carlos Gómez",
+        nombreComercial: "Complejo Deportivo El Golazo VIP",
+        district: "El Tambo",
+        direccion: "Av. Huancavelica 1240",
+        ruc: "20601234567",
+        telefono: "964123456",
+        superficie: "Grass Sintético FIFA",
+        courts: [
+          {
+            id: "C1",
+            name: "Cancha 1 - Sintética (Futsal 7)",
+            type: "Futsal",
+            pricePerHour: 60.00,
+            img: "https://images.unsplash.com/photo-1575361204480-aadea25e6e68?auto=format&fit=crop&w=600&q=80",
+            altImg: "Vista panorámica de Cancha 1 de futsal con césped sintético en El Tambo",
+            address: "Av. Huancavelica 1240"
+          }
+        ]
+      },
+      {
+        ownerId: "owner_02",
+        representante: "Marisol Quispe",
+        ownerName: "Arena Central - Marisol Quispe",
+        nombreComercial: "Coliseo & Canchas Arena Central",
+        district: "Huancayo Centro",
+        direccion: "Jr. Amazonas 540",
+        ruc: "20604567891",
+        telefono: "964234567",
+        superficie: "Piso Parquet / Techado",
+        courts: [
+          {
+            id: "C2",
+            name: "Cancha 2 - Coliseo Vóley Pro",
+            type: "Vóley",
+            pricePerHour: 55.00,
+            img: "https://images.unsplash.com/photo-1612872087720-bb876e2e67d1?auto=format&fit=crop&w=600&q=80",
+            altImg: "Cancha techada de vóley profesional en Huancayo Centro",
+            address: "Jr. Amazonas 540"
+          }
+        ]
+      },
+      {
+        ownerId: "owner_03",
+        representante: "Wilder Rojas",
+        ownerName: "La Bombonera Sur - Wilder Rojas",
+        nombreComercial: "Centro Deportivo La Bombonera Sur",
+        district: "Chilca",
+        direccion: "Av. Próceres 890",
+        ruc: "20607891234",
+        telefono: "964345678",
+        superficie: "Grass Sintético FIFA",
+        courts: [
+          {
+            id: "C3",
+            name: "Cancha 3 - Grass Sintético 8v8",
+            type: "Futsal",
+            pricePerHour: 70.00,
+            img: "https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=600&q=80",
+            altImg: "Complejo deportivo multiusos en Chilca",
+            address: "Av. Próceres 890"
+          }
+        ]
+      },
+      {
+        ownerId: "owner_04",
+        representante: "Patricia Ccanto",
+        ownerName: "Valle Pádel & Básquet - Patricia Ccanto",
+        nombreComercial: "Club Deportivo Valle del Mantaro",
+        district: "San Jerónimo",
+        direccion: "Av. Mariscal Castilla 315",
+        ruc: "20609876543",
+        telefono: "964456789",
+        superficie: "Cancha de Cristal Pádel",
+        courts: [
+          {
+            id: "C4",
+            name: "Cancha 4 - Pádel Panorámico",
+            type: "Pádel",
+            pricePerHour: 65.00,
+            img: "https://images.unsplash.com/photo-1554068865-24cecd4e34b8?auto=format&fit=crop&w=600&q=80",
+            altImg: "Pista de pádel con cerramiento de cristal en San Jerónimo",
+            address: "Av. Mariscal Castilla 315"
+          }
+        ]
+      }
+    ];
+
+    // =========================================================
+    // GENERADOR DE 200 REGISTROS DE 200 USUARIOS
+    // =========================================================
+    function generate200Users() {
+      const nombres = [
+        "Luis", "Diego", "Marco", "Jorge", "Andrés", "Kevin", "Bryan", "Renzo", "Fabio", "César",
+        "Valeria", "Camila", "Daniela", "Fiorella", "Lucía", "Nayeli", "Melissa", "Andrea", "Natalia", "Paola"
+      ];
+      const apellidos = [
+        "Huamán", "Quispe", "Rojas", "Ccanto", "Poma", "Gómez", "Mendoza", "Flores", "Chávez", "Sánchez",
+        "Castillo", "Vargas", "Palacios", "Alanya", "Tovar", "Soto", "Apaza", "Salazar", "Zúñiga", "Meza"
+      ];
+      const distritos = ["El Tambo", "Huancayo Centro", "Chilca", "San Jerónimo"];
+
+      const usuarios = [];
+      for (let i = 1; i <= 200; i++) {
+        const nombre = nombres[(i * 7) % nombres.length];
+        const apPaterno = apellidos[(i * 11) % apellidos.length];
+        const apMaterno = apellidos[(i * 13 + 3) % apellidos.length];
+        const nombreCompleto = `${nombre} ${apPaterno} ${apMaterno}`;
+        const dni = String(42000000 + i * 137).padStart(8, "0");
+        const telefono = "9" + String(64000000 + ((i * 7919) % 35999999)).padStart(8, "0");
+        const emailSlug = `${nombre.toLowerCase()}.${apPaterno.toLowerCase()}${i}`;
+        const distrito = distritos[i % distritos.length];
+        const reservasCount = (i % 7) + 1;
+        const montoPromedio = [55, 60, 65, 70][i % 4];
+
+        usuarios.push({
+          id: `usr_${String(i).padStart(3, "0")}`,
+          numero: i,
+          nombreCompleto,
+          email: `${emailSlug}@canchagol.pe`,
+          tipoDocumento: "DNI",
+          numeroDocumento: dni,
+          telefono,
+          distrito,
+          rol: "client",
+          reservasCount,
+          gastoTotal: reservasCount * montoPromedio,
+          fechaRegistro: `2026-0${(i % 9) + 1}-${String((i % 27) + 1).padStart(2, "0")}`
+        });
+      }
+      return usuarios;
+    }
+
+    // =========================================================
+    // GENERADOR DE 200 REGISTROS DE RESERVAS
+    // =========================================================
+    function generate200Reservas(usuariosLista) {
+      const canchasCatalogo = [
+        { id: "C1", precio: 60.00 },
+        { id: "C2", precio: 55.00 },
+        { id: "C3", precio: 70.00 },
+        { id: "C4", precio: 65.00 }
+      ];
+      const horas = ["16:00", "17:00", "18:00", "19:00", "20:00", "21:00"];
+      const fechas = [
+        "2026-10-11", "2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15",
+        "2026-10-16", "2026-10-17", "2026-10-18", "2026-10-19", "2026-10-20"
+      ];
+
+      const listaReservas = [];
+      for (let i = 1; i <= 200; i++) {
+        const usuario = usuariosLista[(i - 1) % usuariosLista.length];
+        const cancha = canchasCatalogo[(i * 3) % canchasCatalogo.length];
+        const hora = horas[(i - 1) % horas.length];
+        const fecha = fechas[Math.floor((i - 1) / 20) % fechas.length];
+        const estadoPago = i % 10 === 0 ? "PENDIENTE" : "PAGADO";
+
+        listaReservas.push({
+          id: `RES-${String(i).padStart(3, "0")}`,
+          numero: i,
+          cliente: usuario.nombreCompleto,
+          telefono: usuario.telefono,
+          canchaId: cancha.id,
+          fecha,
+          horaInicio: hora,
+          precioTotal: cancha.precio,
+          estadoPago
+        });
+      }
+      return listaReservas;
+    }
+
+    const initialUsuarios = generate200Users();
+    const initialReservas = generate200Reservas(initialUsuarios);
+
+    let databaseDueños = [...initialDueños];
+    let usuariosData = [...initialUsuarios];
+    let canchasData = [];
+    let reservas = [...initialReservas];
+
+    const ownerSelect = document.getElementById('ownerSelect');
+    const courtSelect = document.getElementById('courtSelect');
+    const submitBtn = document.getElementById('submitBtn');
+
+    document.addEventListener('DOMContentLoaded', () => {
+      rebuildCanchasAndSelects();
+      renderTablaDuenosAdmin();
+      renderTablaUsuariosAdmin();
+      renderTablaClientesVip();
+      renderGrillaHorarios();
+      renderTablaReservas();
+      renderAllOwnerStats();
+      updateNavbar();
+
+      // Sincronización en vivo de dueños desde Firebase
+      try {
+        db.ref('duenos').on('value', (snapshot) => {
+          const data = snapshot.val();
+          const merged = [...initialDueños];
+          if (data) {
+            Object.keys(data).forEach(key => {
+              const item = data[key];
+              if (!merged.some(o => o.ownerId === item.ownerId)) {
+                merged.push(item);
+              }
+            });
+          }
+          databaseDueños = merged;
+          rebuildCanchasAndSelects();
+          renderTablaDuenosAdmin();
+          renderAllOwnerStats();
+        }, () => {});
+      } catch (e) {}
+
+      // Sincronización en vivo de usuarios desde Firebase (manteniendo los 200 iniciales)
+      try {
+        db.ref('usuarios').on('value', (snapshot) => {
+          const data = snapshot.val();
+          const mergedUsers = [...initialUsuarios];
+          if (data) {
+            Object.keys(data).forEach((key, idx) => {
+              const u = data[key];
+              if (!mergedUsers.some(existing => existing.email === u.email)) {
+                mergedUsers.unshift({
+                  ...u,
+                  numero: idx + 1,
+                  distrito: u.distrito || 'El Tambo',
+                  reservasCount: u.reservasCount || 1,
+                  gastoTotal: u.gastoTotal || 60
+                });
+              }
+            });
+          }
+          usuariosData = mergedUsers;
+          renderTablaUsuariosAdmin();
+          renderTablaClientesVip();
+        }, () => {});
+      } catch (e) {}
+
+      // Sincronización en vivo de reservas desde Firebase (manteniendo las 200 iniciales)
+      try {
+        db.ref('reservas').on('value', (snapshot) => {
+          const data = snapshot.val();
+          const mergedReservas = [...initialReservas];
+          if (data) {
+            Object.keys(data).forEach(key => {
+              const r = data[key];
+              if (!mergedReservas.some(existing => existing.id === r.id)) {
+                mergedReservas.unshift(r);
+              }
+            });
+          }
+          reservas = mergedReservas;
+          renderGrillaHorarios();
+          renderTablaReservas();
+          renderAllOwnerStats();
+          renderTablaClientesVip();
+        }, () => {});
+      } catch (e) {}
+    });
+
+    // =========================================================
+    // EXPORTAR A EXCEL (.CSV COMPATIBLE CON EXCEL)
+    // =========================================================
+    function getFilteredReservas() {
+      const query = (document.getElementById('reservas-search')?.value || '').toLowerCase().trim();
+      const statusFilter = document.getElementById('reservas-status-filter')?.value || '';
+      const limit = parseInt(document.getElementById('reservas-limit-filter')?.value || '250', 10);
+
+      return reservas.filter(r => {
+        const canchaNombre = (canchasData.find(c => c.id === r.canchaId)?.title || r.canchaId).toLowerCase();
+        const matchTexto = !query ||
+          (r.cliente || '').toLowerCase().includes(query) ||
+          (r.telefono || '').toLowerCase().includes(query) ||
+          canchaNombre.includes(query) ||
+          (r.fecha || '').includes(query);
+        const matchEstado = !statusFilter || r.estadoPago === statusFilter;
+        return matchTexto && matchEstado;
+      }).slice(0, limit);
+    }
+
+    function getFilteredUsuarios() {
+      const query = (document.getElementById('admin-user-search')?.value || '').toLowerCase().trim();
+      const limit = parseInt(document.getElementById('admin-user-limit')?.value || '200', 10);
+
+      return usuariosData.filter(u => {
+        if (!query) return true;
+        return (
+          (u.nombreCompleto || '').toLowerCase().includes(query) ||
+          (u.numeroDocumento || '').toLowerCase().includes(query) ||
+          (u.email || '').toLowerCase().includes(query) ||
+          (u.distrito || '').toLowerCase().includes(query) ||
+          (u.telefono || '').toLowerCase().includes(query)
+        );
+      }).slice(0, limit);
+    }
+
+    function csvCell(val) {
+      const str = String(val ?? '').replace(/"/g, '""');
+      return `"${str}"`;
+    }
+
+    function downloadCsv(filename, headers, rows) {
+      const lines = [
+        headers.map(csvCell).join(';'),
+        ...rows.map(row => row.map(csvCell).join(';'))
+      ];
+      const blob = new Blob(['\uFEFF' + lines.join('\r\n')], {
+        type: 'text/csv;charset=utf-8;'
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    function exportToExcel(tipo = 'reservas') {
+      const hoy = new Date().toISOString().split('T')[0];
+
+      if (tipo === 'usuarios') {
+        const lista = getFilteredUsuarios();
+        const headers = ['#', 'ID', 'Nombre Completo', 'Documento', 'Correo', 'Teléfono', 'Distrito', 'Rol', 'Reservas', 'Gasto Total (S/)', 'Fecha Registro'];
+        const rows = lista.map((u, idx) => [
+          u.numero || idx + 1,
+          u.id,
+          u.nombreCompleto,
+          `${u.tipoDocumento || 'DNI'}: ${u.numeroDocumento || ''}`,
+          u.email,
+          u.telefono || '',
+          u.distrito || 'El Tambo',
+          u.rol || 'client',
+          u.reservasCount || 0,
+          Number(u.gastoTotal || 0).toFixed(2),
+          u.fechaRegistro || ''
+        ]);
+        downloadCsv(`CanchaGol_Usuarios_${hoy}.csv`, headers, rows);
+        return;
+      }
+
+      if (tipo === 'duenos') {
+        const headers = ['ID Dueño', 'Representante', 'Complejo Deportivo', 'RUC', 'Distrito', 'Dirección', 'Teléfono', 'Superficie', 'Horario'];
+        const rows = databaseDueños.map(d => [
+          d.ownerId,
+          d.representante || d.ownerName,
+          d.nombreComercial || d.ownerName,
+          d.ruc || '',
+          d.district,
+          d.direccion || '',
+          d.telefono || '',
+          d.superficie || 'Grass Sintético',
+          '08:00 AM - 11:00 PM'
+        ]);
+        downloadCsv(`CanchaGol_Duenos_${hoy}.csv`, headers, rows);
+        return;
+      }
+
+      const lista = getFilteredReservas();
+      const headers = ['#', 'ID Reserva', 'Cliente', 'Teléfono', 'Cancha', 'Fecha', 'Hora', 'Monto Total (S/)', 'Estado'];
+      const rows = lista.map((r, idx) => {
+        const cancha = canchasData.find(c => c.id === r.canchaId)?.title || r.canchaId;
+        return [
+          r.numero || idx + 1,
+          r.id,
+          r.cliente,
+          r.telefono,
+          cancha,
+          r.fecha,
+          r.horaInicio,
+          Number(r.precioTotal || 0).toFixed(2),
+          r.estadoPago
+        ];
+      });
+      downloadCsv(`CanchaGol_Reservas_${hoy}.csv`, headers, rows);
+    }
+
+    function rebuildCanchasAndSelects() {
+      canchasData = [];
+      ownerSelect.innerHTML = '<option value="">-- Selecciona un Dueño o Complejo --</option>';
+
+      databaseDueños.forEach(owner => {
+        const option = document.createElement('option');
+        option.value = owner.ownerId;
+        option.textContent = `${owner.ownerName} (${owner.district})`;
+        ownerSelect.appendChild(option);
+
+        if (owner.courts) {
+          owner.courts.forEach(court => {
+            canchasData.push({
+              id: court.id,
+              title: court.name,
+              sport: court.type,
+              district: owner.district,
+              price: court.pricePerHour,
+              img: court.img || "https://images.unsplash.com/photo-1575361204480-aadea25e6e68?auto=format&fit=crop&w=600&q=80",
+              altImg: court.altImg || `Fotografía de cancha de ${court.type} ubicada en ${owner.district}`,
+              address: court.address || owner.direccion,
+              ownerName: owner.ownerName,
+              ownerId: owner.ownerId
+            });
+          });
+        }
+      });
+
+      document.getElementById('courts-count').innerText = `${canchasData.length} Canchas disponibles (${databaseDueños.length} Dueños)`;
+      renderCourts(canchasData);
+    }
+
+    // =========================================================
+    // REGISTRO DE DUEÑOS Y USUARIOS
+    // =========================================================
+    function handleAuthSubmit(e) {
+      e.preventDefault();
+
+      const email = document.getElementById('auth-email').value.trim();
+      const firstName = document.getElementById('reg-firstname')?.value.trim() || email.split('@')[0];
+      const lastName1 = document.getElementById('reg-lastname1')?.value.trim() || '';
+      const lastName2 = document.getElementById('reg-lastname2')?.value.trim() || '';
+      const fullName = `${firstName} ${lastName1} ${lastName2}`.trim();
+
+      if (authMode === 'register') {
+        const docType = document.getElementById('reg-doc-type')?.value || 'DNI';
+        const dni = document.getElementById('reg-dni')?.value.trim() || '00000000';
+        const phone = document.getElementById('reg-phone')?.value.trim() || '900000000';
+        const distritoUsuario = document.getElementById('reg-distrito')?.value || 'El Tambo';
+
+        const userId = 'usr_' + Date.now();
+        const newUserRecord = {
+          id: userId,
+          numero: usuariosData.length + 1,
+          email,
+          nombreCompleto: fullName,
+          tipoDocumento: docType,
+          numeroDocumento: dni,
+          telefono: phone,
+          distrito: distritoUsuario,
+          rol: selectedRole,
+          reservasCount: 0,
+          gastoTotal: 0,
+          fechaRegistro: new Date().toISOString().split('T')[0]
+        };
+
+        usuariosData.unshift(newUserRecord);
+        try { db.ref('usuarios/' + userId).set(newUserRecord).catch(() => {}); } catch (err) {}
+
+        if (selectedRole === 'owner') {
+          const ruc = document.getElementById('reg-ruc')?.value.trim() || '20600000000';
+          const localName = document.getElementById('reg-local-name')?.value.trim() || `Complejo de ${firstName}`;
+          const distrito = document.getElementById('reg-distrito')?.value || 'El Tambo';
+          const direccion = document.getElementById('reg-address')?.value.trim() || 'Av. Principal Huancayo';
+          const deporte = document.getElementById('reg-sport-type')?.value || 'Futsal';
+          const superficie = document.getElementById('reg-surface')?.value || 'Grass Sintético FIFA';
+          const precio = parseFloat(document.getElementById('reg-price')?.value) || 60;
+
+          const ownerId = 'owner_' + Date.now();
+          const courtId = 'C_' + Date.now();
+
+          const newOwnerData = {
+            ownerId,
+            representante: fullName,
+            ownerName: `${localName} - ${fullName}`,
+            nombreComercial: localName,
+            ruc,
+            district: distrito,
+            direccion,
+            telefono: phone,
+            superficie,
+            fechaRegistro: new Date().toISOString().split('T')[0],
+            courts: [
+              {
+                id: courtId,
+                name: `Cancha Principal - ${localName}`,
+                type: deporte,
+                pricePerHour: precio,
+                address: direccion,
+                img: "https://images.unsplash.com/photo-1575361204480-aadea25e6e68?auto=format&fit=crop&w=600&q=80",
+                altImg: `Instalaciones deportivas de ${deporte} del complejo ${localName} en ${distrito}`
+              }
+            ]
+          };
+
+          databaseDueños.push(newOwnerData);
+          rebuildCanchasAndSelects();
+          renderTablaDuenosAdmin();
+          try { db.ref('duenos/' + ownerId).set(newOwnerData).catch(() => {}); } catch (err) {}
+
+          alert(`¡NUEVO DUEÑO REGISTRADO!\n\nPropietario: ${fullName}\nComplejo: ${localName}\nDistrito: ${distrito}`);
+        } else {
+          renderTablaUsuariosAdmin();
+          alert(`¡REGISTRO EXITOSO!\n\nBienvenido ${fullName}.`);
+        }
+      }
+
+      currentUser = { email, role: selectedRole, nombre: fullName };
+      updateNavbar();
+
+      if (selectedRole === 'owner') switchView('view-owner-dashboard');
+      else if (selectedRole === 'admin') switchView('view-admin-dashboard');
+      else switchView('view-home');
+    }
+
+    function renderTablaDuenosAdmin() {
+      const tbody = document.getElementById('tabla-duenos-admin');
+      const countEl = document.getElementById('admin-count-owners');
+      if (countEl) countEl.innerText = databaseDueños.length;
+      if (!tbody) return;
+
+      tbody.innerHTML = '';
+      databaseDueños.forEach(d => {
+        tbody.innerHTML += `
+          <tr>
+            <td class="py-3 px-4 font-bold text-white">${d.representante || d.ownerName}</td>
+            <td class="py-3 px-4 font-semibold text-emerald-400">${d.nombreComercial || d.ownerName}</td>
+            <td class="py-3 px-4">${d.ruc || '20601234567'}</td>
+            <td class="py-3 px-4">${d.district} <span class="text-slate-500 text-[10px]">(${d.direccion || 'Huancayo'})</span></td>
+            <td class="py-3 px-4">${d.telefono || '964123456'}</td>
+            <td class="py-3 px-4 text-[11px]">${d.superficie || 'Grass Sintético'}</td>
+            <td class="py-3 px-4 text-[11px]">08:00 AM - 11:00 PM</td>
+          </tr>
+        `;
+      });
+    }
+
+    function renderTablaUsuariosAdmin() {
+      const tbody = document.getElementById('tabla-usuarios-admin');
+      const countEl = document.getElementById('admin-count-users');
+      if (countEl) countEl.innerText = usuariosData.length;
+      if (!tbody) return;
+
+      const filtered = getFilteredUsuarios();
+
+      tbody.innerHTML = '';
+      filtered.forEach((u, index) => {
+        tbody.innerHTML += `
+          <tr>
+            <td class="py-2.5 px-4 text-slate-400 font-mono">${u.numero || index + 1}</td>
+            <td class="py-2.5 px-4 font-bold text-white">${u.nombreCompleto}</td>
+            <td class="py-2.5 px-4">${u.tipoDocumento || 'DNI'}: ${u.numeroDocumento || '-'}</td>
+            <td class="py-2.5 px-4 text-slate-300">${u.email}</td>
+            <td class="py-2.5 px-4">${u.telefono || '-'}</td>
+            <td class="py-2.5 px-4">${u.distrito || 'El Tambo'}</td>
+            <td class="py-2.5 px-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-emerald-400 border border-slate-700 uppercase">${u.rol || 'client'}</span></td>
+            <td class="py-2.5 px-4 font-semibold text-emerald-400">${u.reservasCount || 0} res. · S/ ${(u.gastoTotal || 0).toFixed(2)}</td>
+          </tr>
+        `;
+      });
+    }
+
+    function renderTablaClientesVip() {
+      const tbody = document.getElementById('tabla-clientes-vip');
+      if (!tbody) return;
+
+      const resumenPorCliente = {};
+      reservas.forEach(r => {
+        if (!resumenPorCliente[r.cliente]) {
+          resumenPorCliente[r.cliente] = { nombre: r.cliente, telefono: r.telefono, count: 0, total: 0 };
+        }
+        resumenPorCliente[r.cliente].count += 1;
+        resumenPorCliente[r.cliente].total += Number(r.precioTotal || 0);
+      });
+
+      const topClientes = Object.values(resumenPorCliente)
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 15);
+
+      tbody.innerHTML = '';
+      topClientes.forEach(c => {
+        tbody.innerHTML += `
+          <tr>
+            <td class="py-3 px-4 font-bold text-white">${c.nombre}</td>
+            <td class="py-3 px-4">${c.telefono}</td>
+            <td class="py-3 px-4">${c.count}</td>
+            <td class="py-3 px-4 font-bold text-emerald-400">S/ ${c.total.toFixed(2)}</td>
+          </tr>
+        `;
+      });
+    }
+
+    ownerSelect.addEventListener('change', (e) => {
+      const selectedOwnerId = e.target.value;
+      courtSelect.innerHTML = '<option value="">-- Selecciona una cancha --</option>';
+
+      if (!selectedOwnerId) {
+        courtSelect.disabled = true;
+        submitBtn.disabled = true;
+        return;
+      }
+
+      const ownerData = databaseDueños.find(o => o.ownerId === selectedOwnerId);
+      if (ownerData && ownerData.courts) {
+        ownerData.courts.forEach(court => {
+          const option = document.createElement('option');
+          option.value = court.id;
+          option.textContent = `${court.name} - S/ ${court.pricePerHour.toFixed(2)}/hr`;
+          courtSelect.appendChild(option);
+        });
+        courtSelect.disabled = false;
+      }
+    });
+
+    courtSelect.addEventListener('change', (e) => {
+      submitBtn.disabled = !e.target.value;
+    });
+
+    function confirmReservation(e) {
+      e.preventDefault();
+
+      const clientName = document.getElementById('checkout-name').value.trim();
+      const phone = document.getElementById('checkout-phone').value.trim();
+      const date = document.getElementById('checkout-date').value;
+      const hour = document.getElementById('checkout-hour').value;
+      const selectedCourtId = courtSelect.value;
+      const courtInfo = canchasData.find(c => c.id === selectedCourtId);
+
+      const resId = 'RES-' + Date.now();
+      const newRes = {
+        id: resId,
+        numero: reservas.length + 1,
+        cliente: clientName,
+        telefono: phone,
+        canchaId: selectedCourtId,
+        fecha: date,
+        horaInicio: hour,
+        precioTotal: courtInfo ? courtInfo.price : 60,
+        estadoPago: 'PAGADO'
+      };
+
+      reservas.unshift(newRes);
+      renderGrillaHorarios();
+      renderTablaReservas();
+      renderAllOwnerStats();
+      renderTablaClientesVip();
+
+      try { db.ref('reservas/' + resId).set(newRes).catch(() => {}); } catch (err) {}
+
+      closeCheckoutModal();
+      alert(`¡RESERVA REGISTRADA!\n\nCliente: ${clientName}\nFecha: ${date} (${hour})\nMonto: S/ ${newRes.precioTotal.toFixed(2)}`);
+      document.getElementById('bookingForm').reset();
+      courtSelect.disabled = true;
+      submitBtn.disabled = true;
+    }
+
+    function switchStatTab(tabId) {
+      document.querySelectorAll('.stat-tab').forEach(t => t.classList.remove('active'));
+      document.getElementById(tabId).classList.add('active');
+
+      const tabs = ['tab-ventas', 'tab-reservas', 'tab-canchas', 'tab-clientes'];
+      tabs.forEach(t => {
+        const btn = document.getElementById('btn-' + t);
+        if (t === tabId) {
+          btn.className = 'flex-1 py-2.5 px-4 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 transition-all flex items-center justify-center gap-2';
+        } else {
+          btn.className = 'flex-1 py-2.5 px-4 text-xs font-bold rounded-lg text-slate-400 hover:text-white transition-all flex items-center justify-center gap-2';
+        }
+      });
+    }
+
+    function renderAllOwnerStats() {
+      const totalVentas = reservas.reduce((acc, r) => acc + Number(r.precioTotal || 0), 0);
+      const ticketPromedio = reservas.length > 0 ? (totalVentas / reservas.length) : 0;
+
+      document.getElementById('stat-ingresos-total').innerText = totalVentas.toFixed(2);
+      document.getElementById('stat-ticket-promedio').innerText = ticketPromedio.toFixed(2);
+      document.getElementById('stat-total-reservas').innerText = reservas.length;
+
+      const adminResEl = document.getElementById('admin-count-reservas');
+      if (adminResEl) adminResEl.innerText = reservas.length;
+
+      const canchasList = document.getElementById('canchas-stats-list');
+      canchasList.innerHTML = '';
+
+      canchasData.forEach(c => {
+        const reservasCancha = reservas.filter(r => r.canchaId === c.id);
+        const montoCancha = reservasCancha.reduce((acc, r) => acc + Number(r.precioTotal || 0), 0);
+        const ocupacionPorcentaje = reservas.length > 0
+          ? Math.min(100, Math.round((reservasCancha.length / reservas.length) * 100))
+          : 0;
+
+        canchasList.innerHTML += `
+          <div>
+            <div class="flex justify-between text-xs mb-1 font-bold">
+              <span class="text-white">${c.title} (${c.sport})</span>
+              <span class="text-emerald-400">S/ ${montoCancha.toFixed(2)} (${reservasCancha.length} Reservas · ${ocupacionPorcentaje}%)</span>
+            </div>
+            <div class="w-full bg-slate-800 h-3 rounded-full overflow-hidden flex">
+              <div class="bg-gradient-to-r from-emerald-500 to-green-400 h-full rounded-full transition-all" style="width: ${ocupacionPorcentaje}%"></div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    function switchView(viewId) {
+      document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
+      document.getElementById(viewId).classList.add('active');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function protectedSwitchView(viewId, requiredRole) {
+      if (!currentUser) {
+        alert('Debes iniciar sesión primero.');
+        openAuthModal('login');
+        return;
+      }
+      switchView(viewId);
+    }
+
+    function updateNavbar() {
+      const guestCtrl = document.getElementById('guest-controls');
+      const userCtrl = document.getElementById('user-controls');
+      const ownerLink = document.getElementById('nav-owner-link');
+      const adminLink = document.getElementById('nav-admin-link');
+
+      if (currentUser) {
+        guestCtrl.classList.add('hidden');
+        userCtrl.classList.remove('hidden');
+        userCtrl.classList.add('flex');
+        document.getElementById('user-name').innerText = currentUser.nombre;
+
+        if (currentUser.role === 'owner') ownerLink.classList.remove('hidden');
+        if (currentUser.role === 'admin') adminLink.classList.remove('hidden');
+      } else {
+        guestCtrl.classList.remove('hidden');
+        userCtrl.classList.add('hidden');
+        ownerLink.classList.add('hidden');
+        adminLink.classList.add('hidden');
+      }
+    }
+
+    function openAuthModal(mode = 'login') {
+      toggleAuthMode(mode);
+      switchView('view-auth');
+    }
+
+    function toggleAuthMode(mode) {
+      authMode = mode;
+      const loginTab = document.getElementById('auth-mode-login');
+      const regTab = document.getElementById('auth-mode-register');
+      const regFields = document.getElementById('register-fields');
+      const submitLabel = document.querySelector('#auth-submit-btn span');
+
+      if (mode === 'register') {
+        regTab.className = "flex-1 py-2 text-xs font-bold border-b-2 border-emerald-500 text-emerald-400 transition-all";
+        loginTab.className = "flex-1 py-2 text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-white transition-all";
+        regFields.classList.remove('hidden');
+        if (submitLabel) submitLabel.innerText = 'Completar Registro';
+      } else {
+        loginTab.className = "flex-1 py-2 text-xs font-bold border-b-2 border-emerald-500 text-emerald-400 transition-all";
+        regTab.className = "flex-1 py-2 text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-white transition-all";
+        regFields.classList.add('hidden');
+        if (submitLabel) submitLabel.innerText = 'Iniciar Sesión';
+      }
+      updateAuthUI();
+    }
+
+    function selectRole(role) {
+      selectedRole = role;
+      document.getElementById('role-client-btn').className = `flex-1 py-2 text-xs font-bold rounded-lg ${role === 'client' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`;
+      document.getElementById('role-owner-btn').className = `flex-1 py-2 text-xs font-bold rounded-lg ${role === 'owner' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`;
+      document.getElementById('role-admin-btn').className = `flex-1 py-2 text-xs font-bold rounded-lg ${role === 'admin' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400'}`;
+      updateAuthUI();
+    }
+
+    function updateAuthUI() {
+      const ownerSection = document.getElementById('owner-register-fields');
+      if (authMode === 'register' && selectedRole === 'owner') {
+        ownerSection.classList.remove('hidden');
+      } else {
+        ownerSection.classList.add('hidden');
+      }
+    }
+
+    function logout() {
+      currentUser = null;
+      updateNavbar();
+      switchView('view-home');
+    }
+
+    function renderCourts(list) {
+      const container = document.getElementById('canchas-container');
+      container.innerHTML = '';
+
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-full text-center py-12 glass-panel rounded-xl">
+            <i class="fa-solid fa-circle-exclamation text-amber-400 text-3xl mb-2" aria-hidden="true"></i>
+            <p class="text-white font-bold text-sm">No se encontraron canchas para este filtro</p>
+            <p class="text-xs text-slate-400 mt-1">Intenta seleccionar otro deporte o distrito</p>
+            <button onclick="resetFilters()" class="mt-4 px-4 py-2 bg-emerald-500 text-slate-950 text-xs font-bold rounded-lg hover:bg-emerald-400 transition-all">
+              Restablecer Filtros
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      list.forEach(c => {
+        container.innerHTML += `
+          <div class="glass-panel rounded-xl overflow-hidden flex flex-col justify-between group">
+            <div class="w-full h-40 overflow-hidden relative">
+              <img src="${c.img}" alt="${c.altImg || c.title}" loading="lazy" class="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300">
+            </div>
+            <div class="p-4 flex-1 flex flex-col justify-between">
+              <div>
+                <span class="text-[10px] font-bold uppercase text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-2 py-0.5 rounded">${c.sport}</span>
+                <h3 class="text-base font-bold text-white mt-2">${c.title}</h3>
+                <p class="text-xs text-slate-400"><i class="fa-solid fa-location-dot text-emerald-400" aria-hidden="true"></i> ${c.district}</p>
+                <p class="text-[11px] text-slate-500 mt-0.5">${c.ownerName}</p>
+              </div>
+              <div class="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center">
+                <span class="text-emerald-400 font-extrabold text-base">S/ ${c.price.toFixed(2)}/hr</span>
+                <button onclick="openCheckoutModal('${c.ownerId}', '${c.id}')" class="bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-3.5 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-md transition-all">
+                  <i class="fa-solid fa-calendar-plus" aria-hidden="true"></i> Reservar
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+    }
+
+    function openCheckoutModal(ownerId = '', courtId = '') {
+      if (!currentUser) {
+        alert('Debes iniciar sesión para realizar una reserva.');
+        openAuthModal('login');
+        return;
+      }
+
+      document.getElementById('checkout-name').value = currentUser.nombre;
+
+      if (ownerId) {
+        ownerSelect.value = ownerId;
+        ownerSelect.dispatchEvent(new Event('change'));
+        if (courtId) {
+          courtSelect.value = courtId;
+          courtSelect.dispatchEvent(new Event('change'));
+        }
+      }
+
+      const modal = document.getElementById('modal-checkout');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeCheckoutModal() {
+      const modal = document.getElementById('modal-checkout');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function applyFilters() {
+      const dist = document.getElementById('filter-distrito').value;
+      const dep = document.getElementById('filter-deporte').value;
+      const filtered = canchasData.filter(c => (dist === '' || c.district === dist) && (dep === '' || c.sport === dep));
+      renderCourts(filtered);
+    }
+
+    function filterBySport(deporte) {
+      document.getElementById('filter-deporte').value = deporte;
+      applyFilters();
+      const container = document.getElementById('canchas-container');
+      if (container) {
+        container.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    function resetFilters() {
+      document.getElementById('filter-distrito').value = '';
+      document.getElementById('filter-deporte').value = '';
+      applyFilters();
+    }
+
+    function renderGrillaHorarios() {
+      const container = document.getElementById('grilla-container');
+      const fechaFiltro = document.getElementById('filtro-fecha-grilla')?.value || '';
+      const horas = ['16:00', '17:00', '18:00', '19:00', '20:00', '21:00'];
+      let html = `<table class="w-full text-center border-collapse"><thead><tr class="text-xs text-slate-400 border-b border-slate-800"><th class="p-2 text-left">Cancha</th>`;
+      horas.forEach(h => html += `<th class="p-2">${h}</th>`);
+      html += `</tr></thead><tbody class="divide-y divide-slate-800 text-xs">`;
+
+      canchasData.forEach(c => {
+        html += `<tr><td class="p-3 text-left font-bold text-white">${c.title}</td>`;
+        horas.forEach(h => {
+          const res = reservas.find(r => r.canchaId === c.id && r.horaInicio === h && (!fechaFiltro || r.fecha === fechaFiltro));
+          if (res) {
+            html += `<td class="p-1"><div class="bg-emerald-950 border border-emerald-500 text-emerald-300 p-2 rounded-lg text-[10px] font-bold">${res.cliente}<br>(${res.estadoPago})</div></td>`;
+          } else {
+            html += `<td class="p-1"><div class="border border-dashed border-slate-800 text-slate-600 p-2 rounded-lg text-[10px]">Libre</div></td>`;
+          }
+        });
+        html += `</tr>`;
+      });
+      html += `</tbody></table>`;
+      container.innerHTML = html;
+    }
+
+    function renderTablaReservas() {
+      const tbody = document.getElementById('tabla-reservas-body');
+      const countLabel = document.getElementById('reservas-count-label');
+      if (countLabel) countLabel.innerText = reservas.length;
+      if (!tbody) return;
+
+      const filtradas = getFilteredReservas();
+
+      tbody.innerHTML = '';
+      filtradas.forEach((r, idx) => {
+        const cancha = canchasData.find(c => c.id === r.canchaId)?.title || r.canchaId;
+        const badgeClass = r.estadoPago === 'PAGADO'
+          ? 'bg-emerald-950 text-emerald-400 border border-emerald-500'
+          : 'bg-amber-950 text-amber-400 border border-amber-500';
+        tbody.innerHTML += `
+          <tr>
+            <td class="py-2.5 px-4 text-slate-400 font-mono">${r.numero || idx + 1}</td>
+            <td class="py-2.5 px-4 font-bold text-white">${r.cliente}</td>
+            <td class="py-2.5 px-4">${r.telefono}</td>
+            <td class="py-2.5 px-4">${cancha}</td>
+            <td class="py-2.5 px-4">${r.fecha} (${r.horaInicio})</td>
+            <td class="py-2.5 px-4 font-bold text-emerald-400">S/ ${Number(r.precioTotal).toFixed(2)}</td>
+            <td class="py-2.5 px-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${badgeClass}">${r.estadoPago}</span></td>
+          </tr>
+        `;
+      });
+    }
+
+    function toggleChat() {
+      document.getElementById('chatWindow').classList.toggle('active');
+    }
+
+    function sendChatMessage(e) {
+      e.preventDefault();
+      const input = document.getElementById('chatInput');
+      const body = document.getElementById('chatBody');
+      const prompt = input.value.trim();
+
+      if (!prompt) return;
+
+      body.innerHTML += `<div class="bg-emerald-500 text-slate-950 p-2.5 rounded-xl ml-auto max-w-[80%] font-semibold shadow-md">${prompt}</div>`;
+      input.value = '';
+      body.scrollTop = body.scrollHeight;
+
+      setTimeout(() => {
+        body.innerHTML += `<div class="bg-slate-900 border border-slate-800 p-3 rounded-xl max-w-[88%] text-slate-300">Tenemos ${databaseDueños.length} dueños activos, ${usuariosData.length} usuarios y ${reservas.length} reservas registradas en Huancayo. También puedes exportar a Excel desde los paneles.</div>`;
+        body.scrollTop = body.scrollHeight;
+      }, 400);
+    }
+  </script>
+</body>
+</html>
